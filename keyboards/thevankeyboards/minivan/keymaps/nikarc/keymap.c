@@ -1,5 +1,6 @@
 #include QMK_KEYBOARD_H
 
+bool arrow_or_letter_key(uint16_t direction, uint16_t key, uint8_t mod_state, keyrecord_t *record);
 
 // Each layer gets a name for readability, which is then used in the keymap matrix below.
 // The underscores don't mean anything - you can have a layer called STUFF or any other name.
@@ -12,16 +13,13 @@
 #define _L1 3
 #define _L2 4
 #define _L3 5
+#define RGBLIGHT_EFFECT_BREATHING 2
 
 // Curly braces have their own keys. These are defined to make them not mess up
 // the grid in layer 2.
 #define L_CURBR LSFT(KC_LBRC)
 #define R_CURBR LSFT(KC_RBRC)
 #define CTLESC MT(MOD_LCTL, KC_ESC)
-
-#ifdef APPLE_FN_ENABLE     // If apple fn support, use as mac fn key.
-# define KC_MFN KC_APPLE_FN
-#endif
 
 enum custom_keycodes {
   DVORAK = SAFE_RANGE,
@@ -55,10 +53,10 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
             _______, _______, _______,                   _______, _______,                   _______, _______,  RESET
             ),
     [_L2] = LAYOUT( /* LAYER 2 */
-            _______, QWERTY,  DVORAK,  _______, _______, _______, _______,   KC_F7,    KC_F8,    KC_F9,    _______,    _______,
+            _______, QWERTY,  DVORAK,  _______, _______, _______, _______,   KC_F7,    KC_F8,    KC_F9,    KC_F10,    _______,
             KC_ESC,  KC_PIPE, KC_DQUO, KC_UNDS, KC_PLUS, L_CURBR,   R_CURBR, KC_F4,    KC_F5,    KC_F6,    _______,   _______,
-            _______, _______, _______, _______, _______,  _______,   _______,  KC_F1,    KC_F2,    KC_F3,    _______,   _______,
-            KC_MFN, _______, _______,                   _______, _______,                       _______,  _______,   _______
+            _______, _______, _______, _______, _______,  _______,   KC_F11,  KC_F1,    KC_F2,    KC_F3,    _______,   _______,
+            _______, _______, _______,                   _______, _______,                       _______,  _______,   _______
             ),
      /* LAYER 3
     [_L3] = LAYOUT(
@@ -72,24 +70,26 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
 void keyboard_post_init_user(void) {
   #ifdef RGBLIGHT_ENABLE
-    // set up rgb effects on only the third led (index 2)
-    rgblight_set_effect_range(2, 1);
+    // set up rgb effects on only the first led (index 0)
+    rgblight_set_effect_range(0, 1);
 
     // set led effects to breathing mode in warm white
-    rgblight_sethsv_noeeprom(38, 191, 198);
-    rgblight_mode_noeeprom(RGBLIGHT_EFFECT_BREATHING + 2);
+    // rgblight_sethsv_noeeprom(38, 191, 198);
+    // rgblight_mode_noeeprom(RGBLIGHT_EFFECT_BREATHING + 2);
+    sethsv(38, 191, 198, (LED_TYPE *)&led[0]);
+    //rgblight_mode_noeeprom(RGBLIGHT_EFFECT_BREATHING + 2);
 
     // set other led's to off
-    setrgb(0, 0, 0, (LED_TYPE *)&led[0]);
     setrgb(0, 0, 0, (LED_TYPE *)&led[1]);
+    setrgb(0, 0, 0, (LED_TYPE *)&led[2]);
     rgblight_set();
   #endif
 }
 
 layer_state_t layer_state_set_user(layer_state_t state) {
-  state = update_tri_layer_state(state, _LOWER, _RAISE, _ADJUST);
+  // state = update_tri_layer_state(state, _LOWER, _RAISE, _ADJUST);
   #ifdef RGBLIGHT_ENABLE
-    if (layer_state_cmp(state, _ADJUST)) {
+    /*if (layer_state_cmp(state, _ADJUST)) {
       setrgb(70, 255, 200, (LED_TYPE *)&led[0]);
       setrgb(255, 70, 100, (LED_TYPE *)&led[1]);
     } else if (layer_state_cmp(state, _LOWER)) {
@@ -107,9 +107,17 @@ layer_state_t layer_state_set_user(layer_state_t state) {
     } else {
       setrgb(0, 0, 0, (LED_TYPE *)&led[0]);
       setrgb(0, 0, 0, (LED_TYPE *)&led[1]);
-    }
+    }*/
+  if (layer_state_cmp(state, _L1)) {
+      setrgb(3, 236, 252, (LED_TYPE *)&led[1]);
+  } else if (layer_state_cmp(state, _L2)) {
+      setrgb(211, 3, 252, (LED_TYPE *)&led[2]);
+  } else {
+    setrgb(0, 0, 0, (LED_TYPE *)&led[1]);
+    setrgb(0, 0, 0, (LED_TYPE *)&led[2]);
+  }
 
-    rgblight_set();
+  rgblight_set();
   #endif
 
   return state;
@@ -120,25 +128,63 @@ void persistent_default_layer_set(uint16_t default_layer) {
   default_layer_set(default_layer);
 }
 
+static uint8_t mod_state;
+bool arrow_or_letter_key(uint16_t direction, uint16_t key, uint8_t mod_state, keyrecord_t *record) {
+    static bool ctrl_registered;
+
+    if (record->event.pressed) {
+        if (mod_state & MOD_MASK_CTRL) {
+            del_mods(MOD_MASK_CTRL);
+            register_code(direction);
+            ctrl_registered = true;
+            set_mods(mod_state);
+            return false;
+        }
+    } else {
+        if (ctrl_registered) {
+            unregister_code(direction);
+            ctrl_registered = false;
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    return true;
+}
+
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
-      switch(keycode) {
+    mod_state = get_mods();
+    switch(keycode) {
         case DVORAK:
-          if (record->event.pressed) {
-            persistent_default_layer_set(1UL<<_DV);
-          }
-          return false;
+            if (record->event.pressed) {
+                persistent_default_layer_set(1UL<<_DV);
+            }
+            return false;
         case QWERTY:
-          if (record->event.pressed) {
-            persistent_default_layer_set(1UL<<_QW);
-          }
-          return false;
+            if (record->event.pressed) {
+                persistent_default_layer_set(1UL<<_QW);
+            }
+            return false;
         case COLEMAK:
-          if (record->event.pressed) {
-            persistent_default_layer_set(1UL<<_CM);
-          }
-          return false;
+            if (record->event.pressed) {
+                persistent_default_layer_set(1UL<<_CM);
+            }
+            return false;
+        case KC_H: {
+                return arrow_or_letter_key(KC_LEFT, KC_H, mod_state, record);
+            }
+        case KC_J: {
+                return arrow_or_letter_key(KC_DOWN, KC_J, mod_state, record);
+            }
+        case KC_K: {
+                return arrow_or_letter_key(KC_UP, KC_K, mod_state, record);
+            }
+        case KC_L: {
+                return arrow_or_letter_key(KC_RIGHT, KC_L, mod_state, record);
+            }
         default:
-          return true;
-      }
+            return true;
+    }
     return true;
 };
